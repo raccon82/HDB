@@ -74,12 +74,12 @@ def add_record(supabase: Client, name: str, nric: str, unit_number: str) -> tupl
 
 def get_all_records(supabase: Client) -> list:
     """
-    Fetches all records from the database, ordering by creation date descending.
+    Fetches all records from the database, ordering by creation date ascending (so ticket #1 is oldest/first).
     """
     try:
         response = supabase.table("records") \
             .select("id, name, nric_masked, unit_number, created_at") \
-            .order("created_at", desc=True) \
+            .order("created_at", desc=False) \
             .execute()
         return response.data or []
     except Exception as e:
@@ -180,18 +180,19 @@ def import_records_from_excel(supabase: Client, uploaded_file) -> tuple[int, int
 
 def export_records_to_excel(supabase: Client) -> bytes:
     """
-    Exports all records from Supabase to an Excel file bytes buffer using pandas.
+    Exports all records from Supabase to an Excel file bytes buffer using pandas, including Ticket Numbers.
     """
     import pandas as pd
     import io
     
     records = get_all_records(supabase)
     if not records:
-        df = pd.DataFrame(columns=["Name", "NRIC", "Unit Number", "Created Date"])
+        df = pd.DataFrame(columns=["Ticket No.", "Name", "NRIC", "Unit Number", "Created Date"])
     else:
         data = []
-        for r in records:
+        for idx, r in enumerate(records, start=1):
             data.append({
+                "Ticket No.": idx,
                 "Name": r.get("name"),
                 "NRIC": r.get("nric_masked"),
                 "Unit Number": r.get("unit_number"),
@@ -201,24 +202,25 @@ def export_records_to_excel(supabase: Client) -> bytes:
         
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name="Resident Records")
+        df.to_excel(writer, index=False, sheet_name="Distribution Records")
     processed_data = output.getvalue()
     return processed_data
 
 def export_records_to_excel(supabase: Client) -> bytes:
     """
-    Exports all records from Supabase to an Excel file bytes buffer using pandas.
+    Exports all records from Supabase to an Excel file bytes buffer using pandas, including Ticket Numbers.
     """
     import pandas as pd
     import io
     
     records = get_all_records(supabase)
     if not records:
-        df = pd.DataFrame(columns=["Name", "NRIC", "Unit Number", "Created Date"])
+        df = pd.DataFrame(columns=["Ticket No.", "Name", "NRIC", "Unit Number", "Created Date"])
     else:
         data = []
-        for r in records:
+        for idx, r in enumerate(records, start=1):
             data.append({
+                "Ticket No.": idx,
                 "Name": r.get("name"),
                 "NRIC": r.get("nric_masked"),
                 "Unit Number": r.get("unit_number"),
@@ -228,6 +230,6 @@ def export_records_to_excel(supabase: Client) -> bytes:
         
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name="Resident Records")
+        df.to_excel(writer, index=False, sheet_name="Distribution Records")
     processed_data = output.getvalue()
     return processed_data

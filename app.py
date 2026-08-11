@@ -1,5 +1,5 @@
 """
-Main Streamlit application entry point for HDB Resident Records Management System.
+Main Streamlit application entry point for Rivervale Food Distribution.
 """
 import streamlit as st
 from src.database import init_supabase_client
@@ -7,14 +7,14 @@ from src.ui import render_add_record_tab, render_view_records_tab, render_search
 
 # Page configuration
 st.set_page_config(
-    page_title="HDB Resident Records Management",
-    page_icon="🏢",
+    page_title="Rivervale Food Distribution",
+    page_icon="📦",
     layout="centered"
 )
 
 def main():
-    st.title("🏢 HDB Resident Records Management")
-    st.markdown("Securely manage residential unit records with privacy protection and duplicate unit checking.")
+    st.title("📦 Rivervale Food Distribution")
+    st.markdown("Manage food distribution records with secure privacy protection and sequential ticket numbering.")
     
     # Check if secrets are configured
     if "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:

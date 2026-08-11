@@ -75,8 +75,8 @@ def render_import_export_tab(supabase: Client):
                 )
 
 def render_view_records_tab(supabase: Client):
-    st.header("📋 Resident Records List")
-    st.markdown("Displaying all registered units. Full NRIC numbers are securely masked for privacy. You can delete records that are no longer in use.")
+    st.header("📋 Distribution Records List")
+    st.markdown("Displaying all registered distribution tickets with sequential numbering. When an entry is deleted, subsequent ticket numbers automatically re-index.")
     
     records = get_all_records(supabase)
     
@@ -84,18 +84,36 @@ def render_view_records_tab(supabase: Client):
         st.info("No records found in the database.")
         return
         
-    for r in records:
-        col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
+    # Render table header
+    hcol1, hcol2, hcol3, hcol4, hcol5, hcol6 = st.columns([1, 2, 2, 2, 2, 1])
+    with hcol1:
+        st.markdown("**Ticket**")
+    with hcol2:
+        st.markdown("**Name**")
+    with hcol3:
+        st.markdown("**NRIC**")
+    with hcol4:
+        st.markdown("**Unit Number**")
+    with hcol5:
+        st.markdown("**Date**")
+    with hcol6:
+        st.markdown("**Action**")
+    st.divider()
+
+    for idx, r in enumerate(records, start=1):
+        col1, col2, col3, col4, col5, col6 = st.columns([1, 2, 2, 2, 2, 1])
         with col1:
-            st.write(r.get("name"))
+            st.write(f"#{idx}")
         with col2:
-            st.write(r.get("nric_masked"))
+            st.write(r.get("name"))
         with col3:
-            st.write(r.get("unit_number"))
+            st.write(r.get("nric_masked"))
         with col4:
+            st.write(r.get("unit_number"))
+        with col5:
             created_at = r.get("created_at")
             st.write(created_at[:10] if created_at else "")
-        with col5:
+        with col6:
             record_id = r.get("id")
             if st.button("🗑️ Delete", key=f"del_{record_id}"):
                 success, message = delete_record(supabase, record_id)
