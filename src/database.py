@@ -37,40 +37,59 @@ def check_unit_exists(supabase: Client, unit_number_normalized: str) -> bool:
         st.error(f"Database error while checking duplicate unit: {e}")
         return False
 
-def add_record(supabase: Client, name: str, nric: str, unit_number: str) -> tuple[bool, str]:
+def add_record(supabase: Client, name: str, nric: str, unit_number: str, block_number: str = "") -> tuple[bool, str, dict | None]:
     """
     Adds a new record to Supabase after checking for duplicate normalized unit numbers.
-    Returns (success: bool, message: str).
+    Returns (success: bool, message: str, record_details: dict | None).
     """
     normalized_unit = normalize_unit_number(unit_number)
     
     # Check duplicate
     if check_unit_exists(supabase, normalized_unit):
-        return False, "❌ This unit number already exists."
+        return False, "❌ This unit number already exists.", None
     
     masked = mask_nric(nric)
+    clean_block = block_number.strip() if block_number else ""
     
     payload = {
         "name": name.strip(),
         "nric": nric.strip().upper(),
         "nric_masked": masked,
         "unit_number": unit_number.strip(),
-        "unit_number_normalized": normalized_unit
+        "unit_number_normalized": normalized_unit,
+        "block_number": clean_block
     }
     
     try:
         response = supabase.table("records").insert(payload).execute()
         if response.data:
-            return True, "✅ Record added successfully."
+            inserted_item = response.data[0] if isinstance(response.data, list) and len(response.data) > 0 else response.data
+            records = get_all_records(supabase)
+            ticket_no = len(records)
+            if isinstance(inserted_item, dict) and "id" in inserted_item:
+                target_id = inserted_item["id"]
+                for idx, rec in enumerate(records, start=1):
+                    if rec.get("id") == target_id:
+                        ticket_no = idx
+                        break
+            
+            record_details = {
+                "ticket_no": ticket_no,
+                "name": name.strip(),
+                "nric_masked": masked,
+                "unit_number": unit_number.strip(),
+                "block_number": clean_block
+            }
+            return True, "✅ Record added successfully.", record_details
         else:
-            return False, "❌ Failed to insert record."
+            return False, "❌ Failed to insert record.", None
     except Exception as e:
         # Check if error is due to unique violation
         err_msg = str(e)
         print(f"Database error in add_record: {err_msg}")
         if "unique" in err_msg.lower() or "duplicate" in err_msg.lower():
-            return False, "❌ This unit number already exists."
-        return False, f"❌ Database insertion failed: {e}"
+            return False, "❌ This unit number already exists.", None
+        return False, f"❌ Database insertion failed: {e}", None
 
 def get_all_records(supabase: Client) -> list:
     """
@@ -78,7 +97,7 @@ def get_all_records(supabase: Client) -> list:
     """
     try:
         response = supabase.table("records") \
-            .select("id, name, nric_masked, unit_number, created_at") \
+            .select("id, name, nric_masked, unit_number, block_number, created_at") \
             .order("created_at", desc=False) \
             .execute()
         return response.data or []
@@ -101,7 +120,7 @@ def delete_record(supabase: Client, record_id: str) -> tuple[bool, str]:
 
 def search_records(supabase: Client, query: str) -> list:
     """
-    Searches records by name or unit number (normalized or raw).
+    Searches records by name, unit number (normalized or raw), or block number.
     """
     if not query:
         return get_all_records(supabase)
@@ -110,10 +129,10 @@ def search_records(supabase: Client, query: str) -> list:
     norm_q = normalize_unit_number(q)
     
     try:
-        # Search by name (ilike) or unit_number_normalized (eq/ilike)
+        # Search by name (ilike), unit_number_normalized (eq/ilike), or block_number (ilike)
         response = supabase.table("records") \
-            .select("id, name, nric_masked, unit_number, created_at") \
-            .or_(f"name.ilike.%{q}%,unit_number_normalized.ilike.%{norm_q}%") \
+            .select("id, name, nric_masked, unit_number, block_number, created_at") \
+            .or_(f"name.ilike.%{q}%,unit_number_normalized.ilike.%{norm_q}%,block_number.ilike.%{q}%") \
             .order("created_at", desc=True) \
             .execute()
         return response.data or []
@@ -124,7 +143,7 @@ def search_records(supabase: Client, query: str) -> list:
 def import_records_from_excel(supabase: Client, uploaded_file) -> tuple[int, int, list]:
     """
     Imports records from an uploaded Excel file using pandas.
-    Expected columns: Name, NRIC (or FIN), Unit Number.
+    Expected columns: Name, NRIC (or FIN), Unit Number, Block Number (Optional).
     Returns (success_count: int, failure_count: int, errors: list).
     """
     import pandas as pd
@@ -142,6 +161,7 @@ def import_records_from_excel(supabase: Client, uploaded_file) -> tuple[int, int
     name_col = next((c for c in df.columns if 'name' in c), None)
     nric_col = next((c for c in df.columns if 'nric' in c or 'fin' in c), None)
     unit_col = next((c for c in df.columns if 'unit' in c), None)
+    block_col = next((c for c in df.columns if 'block' in c or 'blk' in c), None)
     
     if not name_col or not nric_col or not unit_col:
         return 0, len(df), [f"Excel file must contain Name, NRIC/FIN, and Unit Number columns. Found columns: {list(df.columns)}"]
@@ -154,6 +174,7 @@ def import_records_from_excel(supabase: Client, uploaded_file) -> tuple[int, int
         name = str(row[name_col]) if pd.notna(row[name_col]) else ""
         nric = str(row[nric_col]) if pd.notna(row[nric_col]) else ""
         unit_number = str(row[unit_col]) if pd.notna(row[unit_col]) else ""
+        block_number = str(row[block_col]).strip() if (block_col and pd.notna(row[block_col])) else ""
         
         # Validate fields
         row_errors = []
@@ -169,7 +190,7 @@ def import_records_from_excel(supabase: Client, uploaded_file) -> tuple[int, int
             errors.append(f"Row {idx + 2}: {', '.join(row_errors)} (Name: {name}, Unit: {unit_number})")
             continue
             
-        success, msg = add_record(supabase, name, nric, unit_number)
+        success, msg, _ = add_record(supabase, name, nric, unit_number, block_number)
         if success:
             success_count += 1
         else:
@@ -180,14 +201,14 @@ def import_records_from_excel(supabase: Client, uploaded_file) -> tuple[int, int
 
 def export_records_to_excel(supabase: Client) -> bytes:
     """
-    Exports all records from Supabase to an Excel file bytes buffer using pandas, including Ticket Numbers.
+    Exports all records from Supabase to an Excel file bytes buffer using pandas, including Ticket Numbers and Block Numbers.
     """
     import pandas as pd
     import io
     
     records = get_all_records(supabase)
     if not records:
-        df = pd.DataFrame(columns=["Ticket No.", "Name", "NRIC", "Unit Number", "Created Date"])
+        df = pd.DataFrame(columns=["Ticket No.", "Name", "NRIC", "Unit Number", "Block Number", "Created Date"])
     else:
         data = []
         for idx, r in enumerate(records, start=1):
@@ -196,34 +217,7 @@ def export_records_to_excel(supabase: Client) -> bytes:
                 "Name": r.get("name"),
                 "NRIC": r.get("nric_masked"),
                 "Unit Number": r.get("unit_number"),
-                "Created Date": r.get("created_at")[:10] if r.get("created_at") else ""
-            })
-        df = pd.DataFrame(data)
-        
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name="Distribution Records")
-    processed_data = output.getvalue()
-    return processed_data
-
-def export_records_to_excel(supabase: Client) -> bytes:
-    """
-    Exports all records from Supabase to an Excel file bytes buffer using pandas, including Ticket Numbers.
-    """
-    import pandas as pd
-    import io
-    
-    records = get_all_records(supabase)
-    if not records:
-        df = pd.DataFrame(columns=["Ticket No.", "Name", "NRIC", "Unit Number", "Created Date"])
-    else:
-        data = []
-        for idx, r in enumerate(records, start=1):
-            data.append({
-                "Ticket No.": idx,
-                "Name": r.get("name"),
-                "NRIC": r.get("nric_masked"),
-                "Unit Number": r.get("unit_number"),
+                "Block Number": r.get("block_number") or "",
                 "Created Date": r.get("created_at")[:10] if r.get("created_at") else ""
             })
         df = pd.DataFrame(data)

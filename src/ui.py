@@ -7,14 +7,53 @@ from supabase import Client
 from src.validation import validate_name, validate_nric, validate_unit_number
 from src.database import add_record, get_all_records, search_records, delete_record, import_records_from_excel, export_records_to_excel
 
+@st.dialog("Registration Successful!")
+def show_registration_success_dialog(details: dict):
+    st.write(f"**Ticket Number:** #{details.get('ticket_no')}")
+    st.write(f"**Name:** {details.get('name')}")
+    st.write(f"**NRIC:** {details.get('nric_masked')}")
+    st.write(f"**Unit Number:** {details.get('unit_number')}")
+    blk = details.get('block_number')
+    st.write(f"**Block Number:** {blk if blk else 'N/A'}")
+    
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Register Another Resident", type="primary", use_container_width=True):
+            st.session_state["reg_name"] = ""
+            st.session_state["reg_nric"] = ""
+            st.session_state["reg_unit"] = ""
+            st.session_state["reg_block"] = ""
+            st.session_state["success_details"] = None
+            st.rerun()
+    with col2:
+        if st.button("Close", use_container_width=True):
+            st.session_state["success_details"] = None
+            st.rerun()
+
 def render_add_record_tab(supabase: Client):
     st.header("➕ Add Resident Record")
     st.markdown("Enter resident details below. Unit numbers must be unique.")
 
-    with st.form("add_record_form", clear_on_submit=True):
-        name = st.text_input("Name", placeholder="e.g., John Tan")
-        nric = st.text_input("NRIC (Last 3 digits + letter)", placeholder="e.g., 123A")
-        unit_number = st.text_input("Unit Number", placeholder="e.g., #12-345")
+    if "reg_name" not in st.session_state:
+        st.session_state["reg_name"] = ""
+    if "reg_nric" not in st.session_state:
+        st.session_state["reg_nric"] = ""
+    if "reg_unit" not in st.session_state:
+        st.session_state["reg_unit"] = ""
+    if "reg_block" not in st.session_state:
+        st.session_state["reg_block"] = ""
+    if "success_details" not in st.session_state:
+        st.session_state["success_details"] = None
+
+    if st.session_state.get("success_details"):
+        show_registration_success_dialog(st.session_state["success_details"])
+
+    with st.form("add_record_form"):
+        name = st.text_input("Name", key="reg_name", placeholder="e.g., John Tan")
+        nric = st.text_input("NRIC (Last 3 digits + letter)", key="reg_nric", placeholder="e.g., 123A")
+        unit_number = st.text_input("Unit Number", key="reg_unit", placeholder="e.g., #12-345")
+        block_number = st.text_input("Block Number (Optional)", key="reg_block", placeholder="e.g., 123")
         
         submitted = st.form_submit_button("Submit Record")
         
@@ -32,9 +71,10 @@ def render_add_record_tab(supabase: Client):
                 for err in errors:
                     st.error(err)
             else:
-                success, message = add_record(supabase, name, nric, unit_number)
-                if success:
-                    st.success(message)
+                success, message, record_details = add_record(supabase, name, nric, unit_number, block_number)
+                if success and record_details:
+                    st.session_state["success_details"] = record_details
+                    st.rerun()
                 else:
                     st.error(message)
 
@@ -46,7 +86,7 @@ def render_import_export_tab(supabase: Client):
     
     with col1:
         st.subheader("📥 Import from Excel")
-        st.markdown("Upload an Excel file (.xlsx, .xls) containing columns: **Name**, **NRIC**, **Unit Number**.")
+        st.markdown("Upload an Excel file (.xlsx, .xls) containing columns: **Name**, **NRIC**, **Unit Number**, and optionally **Block Number**.")
         uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx", "xls"])
         if uploaded_file is not None:
             if st.button("Process & Import Excel"):
@@ -85,7 +125,7 @@ def render_view_records_tab(supabase: Client):
         return
         
     # Render table header
-    hcol1, hcol2, hcol3, hcol4, hcol5, hcol6 = st.columns([1, 2, 2, 2, 2, 1])
+    hcol1, hcol2, hcol3, hcol4, hcol5, hcol6, hcol7 = st.columns([1, 2, 2, 2, 2, 2, 1])
     with hcol1:
         st.markdown("**Ticket**")
     with hcol2:
@@ -95,13 +135,15 @@ def render_view_records_tab(supabase: Client):
     with hcol4:
         st.markdown("**Unit Number**")
     with hcol5:
-        st.markdown("**Date**")
+        st.markdown("**Block Number**")
     with hcol6:
+        st.markdown("**Date**")
+    with hcol7:
         st.markdown("**Action**")
     st.divider()
 
     for idx, r in enumerate(records, start=1):
-        col1, col2, col3, col4, col5, col6 = st.columns([1, 2, 2, 2, 2, 1])
+        col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 2, 2, 2, 2, 2, 1])
         with col1:
             st.write(f"#{idx}")
         with col2:
@@ -111,9 +153,11 @@ def render_view_records_tab(supabase: Client):
         with col4:
             st.write(r.get("unit_number"))
         with col5:
+            st.write(r.get("block_number") or "-")
+        with col6:
             created_at = r.get("created_at")
             st.write(created_at[:10] if created_at else "")
-        with col6:
+        with col7:
             record_id = r.get("id")
             if st.button("🗑️ Delete", key=f"del_{record_id}"):
                 success, message = delete_record(supabase, record_id)
@@ -126,9 +170,9 @@ def render_view_records_tab(supabase: Client):
 
 def render_search_records_tab(supabase: Client):
     st.header("🔍 Search Records")
-    st.markdown("Search existing records by Name or Unit Number.")
+    st.markdown("Search existing records by Name, Unit Number, or Block Number.")
     
-    query = st.text_input("Search query", placeholder="Enter name or unit number (e.g., John or #12-345)")
+    query = st.text_input("Search query", placeholder="Enter name, unit number, or block number (e.g., John, #12-345, or 123)")
     
     if st.button("Search") or query:
         results = search_records(supabase, query)
@@ -142,6 +186,7 @@ def render_search_records_tab(supabase: Client):
                     "Name": r.get("name"),
                     "Masked NRIC": r.get("nric_masked"),
                     "Unit Number": r.get("unit_number"),
+                    "Block Number": r.get("block_number") or "-",
                     "Created Date": r.get("created_at")[:10] if r.get("created_at") else ""
                 })
             st.dataframe(display_data, use_container_width=True)
