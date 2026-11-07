@@ -6,7 +6,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from supabase import Client
 from src.validation import validate_name, validate_nric, validate_unit_number
-from src.database import add_record, get_all_records, search_records, delete_record, import_records_from_excel, export_records_to_excel
+from src.database import add_record, get_all_records, search_records, delete_record, delete_all_records, import_records_from_excel, export_records_to_excel
 
 @st.dialog("Registration Successful!")
 def show_registration_success_dialog(details: dict):
@@ -30,6 +30,27 @@ def show_registration_success_dialog(details: dict):
     with col2:
         if st.button("Close", use_container_width=True):
             st.session_state["success_details"] = None
+            st.rerun()
+
+@st.dialog("Delete All Records Confirmation")
+def show_delete_all_confirmation_dialog(supabase: Client):
+    st.warning("⚠️ WARNING: You are about to permanently delete ALL records. This action cannot be undone.")
+    confirm_text = st.text_input('Type "DELETE ALL" to confirm:', key="delete_all_confirm_text", placeholder="DELETE ALL")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        is_confirmed = (confirm_text.strip() == "DELETE ALL")
+        if st.button("Confirm Delete", type="primary", use_container_width=True, disabled=not is_confirmed, key="btn_confirm_delete_all"):
+            success, message = delete_all_records(supabase)
+            st.session_state["show_delete_all_dialog"] = False
+            if success:
+                st.success(message)
+                st.rerun()
+            else:
+                st.error(message)
+    with col2:
+        if st.button("Cancel", use_container_width=True, key="btn_cancel_delete_all"):
+            st.session_state["show_delete_all_dialog"] = False
             st.rerun()
 
 def render_add_record_tab(supabase: Client):
@@ -119,10 +140,17 @@ def render_view_records_tab(supabase: Client):
     st.header("📋 Distribution Records List")
     st.markdown("Displaying all registered distribution tickets with sequential numbering. When an entry is deleted, subsequent ticket numbers automatically re-index.")
     
+    if st.session_state.get("show_delete_all_dialog"):
+        show_delete_all_confirmation_dialog(supabase)
+
     records = get_all_records(supabase)
     
     if not records:
         st.info("No records found in the database.")
+        st.divider()
+        if st.button("🗑️ Delete All Records", type="primary", key="btn_delete_all_records_empty"):
+            st.session_state["show_delete_all_dialog"] = True
+            st.rerun()
         return
         
     # Render table header
@@ -168,6 +196,10 @@ def render_view_records_tab(supabase: Client):
                 else:
                     st.error(message)
         st.divider()
+
+    if st.button("🗑️ Delete All Records", type="primary", key="btn_delete_all_records"):
+        st.session_state["show_delete_all_dialog"] = True
+        st.rerun()
 
     # Inject Floating Back to Top Button into parent document
     components.html(

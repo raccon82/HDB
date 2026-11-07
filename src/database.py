@@ -118,6 +118,23 @@ def delete_record(supabase: Client, record_id: str) -> tuple[bool, str]:
         print(f"Database error in delete_record: {err_msg}")
         return False, f"❌ Failed to delete record: {e}"
 
+def delete_all_records(supabase: Client) -> tuple[bool, str]:
+    """
+    Deletes all records from the records table without deleting the table itself.
+    Returns (success: bool, message: str).
+    """
+    try:
+        response = supabase.table("records").delete().not_.is_("id", "null").execute()
+        return True, "✅ All records deleted successfully."
+    except Exception as e:
+        try:
+            response = supabase.table("records").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+            return True, "✅ All records deleted successfully."
+        except Exception as e2:
+            err_msg = str(e2)
+            print(f"Database error in delete_all_records: {err_msg}")
+            return False, f"❌ Failed to delete all records: {e2}"
+
 def search_records(supabase: Client, query: str) -> list:
     """
     Searches records by name, unit number (normalized or raw), or block number.

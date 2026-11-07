@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from src.masking import mask_nric
 from src.validation import validate_nric, validate_unit_number, normalize_unit_number, validate_name
-from src.database import add_record, check_unit_exists, get_all_records, search_records, export_records_to_excel
+from src.database import add_record, check_unit_exists, get_all_records, search_records, export_records_to_excel, delete_all_records
 
 def test_mask_nric():
     assert mask_nric("123A") == "123A"
@@ -52,4 +52,12 @@ def test_add_record_with_block_number():
     assert details["unit_number"] == "#12-345"
     assert details["block_number"] == "456"
     assert details["ticket_no"] == 1
+
+def test_delete_all_records():
+    mock_supabase = MagicMock()
+    mock_supabase.table().delete().not_.is_().execute.return_value = MagicMock(data=[])
+    
+    success, msg = delete_all_records(mock_supabase)
+    assert success is True
+    assert "deleted successfully" in msg
 
