@@ -3,6 +3,7 @@ Streamlit UI components module.
 Handles rendering for Add Record, View Records, and Search Records.
 """
 import streamlit as st
+import streamlit.components.v1 as components
 from supabase import Client
 from src.validation import validate_name, validate_nric, validate_unit_number
 from src.database import add_record, get_all_records, search_records, delete_record, import_records_from_excel, export_records_to_excel
@@ -167,6 +168,94 @@ def render_view_records_tab(supabase: Client):
                 else:
                     st.error(message)
         st.divider()
+
+    # Inject Floating Back to Top Button into parent document
+    components.html(
+        """
+        <script>
+        (function() {
+            const parentDoc = window.parent.document;
+            let btn = parentDoc.getElementById('st-back-to-top-btn');
+            if (!btn) {
+                btn = parentDoc.createElement('button');
+                btn.id = 'st-back-to-top-btn';
+                btn.innerHTML = '↑ Back to Top';
+                btn.style.cssText = `
+                    position: fixed;
+                    bottom: 24px;
+                    right: 24px;
+                    z-index: 999999;
+                    background-color: #262730;
+                    color: #FAFAFA;
+                    border: 1px solid #4A4D5A;
+                    border-radius: 8px;
+                    padding: 10px 16px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    font-family: Source Sans Pro, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+                    cursor: pointer;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+                    transition: all 0.2s ease-in-out;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                `;
+                
+                btn.onmouseover = function() {
+                    btn.style.backgroundColor = '#31333F';
+                    btn.style.borderColor = '#FF4B4B';
+                    btn.style.color = '#FFFFFF';
+                    btn.style.transform = 'translateY(-2px)';
+                    btn.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.6)';
+                };
+                btn.onmouseout = function() {
+                    btn.style.backgroundColor = '#262730';
+                    btn.style.borderColor = '#4A4D5A';
+                    btn.style.color = '#FAFAFA';
+                    btn.style.transform = 'translateY(0)';
+                    btn.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.4)';
+                };
+
+                parentDoc.body.appendChild(btn);
+            }
+
+            btn.style.display = 'flex';
+            btn.onclick = function(e) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+                const doc = window.parent ? window.parent.document : document;
+                const scrollables = [
+                    doc.querySelector('[data-testid="stAppViewContainer"]'),
+                    doc.querySelector('[data-testid="stMain"]'),
+                    doc.querySelector('section.main'),
+                    doc.querySelector('.main'),
+                    doc.querySelector('.stMain'),
+                    doc.querySelector('[data-testid="stMainBlockContainer"]'),
+                    doc.documentElement,
+                    doc.body,
+                    window.parent,
+                    window
+                ];
+                for (let el of scrollables) {
+                    if (el) {
+                        if (typeof el.scrollTo === 'function') {
+                            try {
+                                el.scrollTo({ top: 0, behavior: 'smooth' });
+                            } catch(err) {}
+                        }
+                        try {
+                            el.scrollTop = 0;
+                        } catch(err) {}
+                    }
+                }
+            };
+        })();
+        </script>
+        """,
+        height=0
+    )
 
 def render_search_records_tab(supabase: Client):
     st.header("🔍 Search Records")
